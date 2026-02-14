@@ -4,15 +4,15 @@
 
 ## 📖 Overview
 
-LandChain is a blockchain-based platform that enables fractional ownership of real estate properties through ERC20 tokens. Properties are tokenized as SPVTokens (Special Purpose Vehicle Tokens), allowing multiple investors to own portions of real estate assets with KYC compliance built into the system.
+LandChain is a blockchain-based platform that enables fractional ownership of real estate properties through ERC20 tokens. Each property is tokenized with its own SPVToken contract (Special Purpose Vehicle Token), allowing multiple investors to own portions of real estate assets with KYC compliance built into the system.
 
 ## 🎯 What It Does
 
-- **Property Tokenization**: Real estate properties are represented as ERC20 tokens
-- **Fractional Ownership**: Multiple investors can purchase tokens representing shares in properties
-- **KYC Compliance**: Only verified (KYC-approved) addresses can hold and transfer tokens
-- **Admin Management**: Administrators can approve KYC applications and manage token operations
-- **Investment Platform**: Users can buy tokens, view their portfolio, and track property investments
+- **Property Tokenization**: Each real estate property gets its own dedicated ERC20 token contract
+- **Fractional Ownership**: Multiple investors can purchase tokens representing shares in individual properties
+- **KYC Compliance**: Shared KYC registry ensures only verified addresses can hold and transfer tokens
+- **Admin Management**: Administrators approve KYC applications and mint tokens for each purchase request
+- **Investment Platform**: Users can buy tokens, view their portfolio, and track holdings across multiple properties
 
 ## 🏗️ Architecture
 
@@ -27,8 +27,9 @@ LandChain is a blockchain-based platform that enables fractional ownership of re
          │ ethers.js
 ┌────────▼────────┐
 │  Smart Contracts │  ← Blockchain (Foundry + Solidity)
-│  - SPVToken      │     - ERC20 tokens with KYC
-│  - KYCRegistry   │     - KYC management
+│  - Property A Token  │    - Each property = separate SPVToken
+│  - Property B Token  │    - Shared KYC Registry
+│  - KYCRegistry   │     - Admin minting control
 └─────────────────┘
 ```
 
@@ -57,23 +58,42 @@ LandChain is a blockchain-based platform that enables fractional ownership of re
 
 ```
 LandChain/
-├── foundry/              # Smart Contracts
+├── foundry/              # Smart Contracts (Solidity + Foundry)
 │   ├── src/
-│   │   ├── tokens/SPVToken.sol
-│   │   └── registries/KYCRegistry.sol
-│   └── script/DeploySPVToken.s.sol
+│   │   ├── tokens/
+│   │   │   └── SPVToken.sol           # ERC20 token with KYC
+│   │   └── registries/
+│   │       └── KYCRegistry.sol        # KYC approval registry
+│   └── script/
+│       └── DeploySPVToken.s.sol       # Deployment script
 │
-├── backend/              # API Server
+├── backend/              # API Server (Node.js + Express)
 │   ├── controllers/      # Request handlers
+│   │   ├── KYCController.js
+│   │   ├── tokenController.js
+│   │   ├── propertyController.js
+│   │   ├── authController.js
+│   │   └── adminAuthController.js
 │   ├── routes/          # API routes
-│   ├── services/        # Blockchain integration
+│   ├── middleware/      # Auth & admin guards
+│   ├── services/
+│   │   └── blockchainService.js       # Ethers.js integration
 │   └── server.js
 │
-└── landchain-frontend/   # React App
+└── frontend/             # React App (Vite + React Router)
     ├── src/
-    │   ├── pages/       # Route pages
-    │   ├── components/  # Reusable components
-    │   └── services/    # API client
+    │   ├── pages/       # Route components
+    │   │   ├── PropertyLanding.jsx
+    │   │   ├── BuyTokens.jsx
+    │   │   ├── Portfolio.jsx
+    │   │   ├── KYCForm.jsx
+    │   │   ├── KYCStatus.jsx
+    │   │   ├── AdminPanel.jsx
+    │   │   └── AdminLogin.jsx
+    │   ├── services/    # API client & auth
+    │   │   ├── api.js
+    │   │   └── auth.js
+    │   └── App.jsx
     └── package.json
 ```
 
@@ -82,7 +102,7 @@ LandChain/
 ### Prerequisites
 - Node.js (v18+)
 - Foundry (Forge, Anvil)
-- MetaMask or Web3 wallet (for production)
+- MetaMask or Web3 wallet
 
 ### 1. Start Local Blockchain
 ```bash
@@ -90,7 +110,7 @@ cd foundry
 anvil
 ```
 
-### 2. Deploy Contracts
+### 2. Deploy KYC Registry
 ```bash
 cd foundry
 forge build
@@ -99,32 +119,19 @@ forge script script/DeploySPVToken.s.sol:DeploySPVToken \
   --private-key <your_private_key> \
   --broadcast
 ```
+**Note:** This deploys the KYCRegistry (and initially LandChain Token). Each property created by admin will automatically deploy its own SPVToken contract.
 
 ### 3. Setup Backend
 ```bash
 cd backend
 npm install
-# Create .env file with:
-# RPC_URL=http://127.0.0.1:8545
-# PRIVATE_KEY=your_private_key
-# SPV_TOKEN_ADDRESS=<from deployment>
-# KYC_REGISTRY_ADDRESS=<from deployment>
-# TOKEN_PRICE=100
-# JWT_SECRET=replace_with_strong_secret
-# ADMIN_WALLETS=0xAdminAddress1,0xAdminAddress2
-# DATABASE_URL=postgresql://user:password@localhost:5432/landchain
-# CORS_ORIGINS=http://localhost:5173
-
-# Generate Prisma client and run migrations
-npm run db:generate
-npm run db:migrate
-
+# Create .env file with contract addresses and keys
 npm start
 ```
 
 ### 4. Setup Frontend
 ```bash
-cd landchain-frontend
+cd frontend
 npm install
 npm run dev
 ```
@@ -133,46 +140,41 @@ Visit `http://localhost:5173` (or the port shown in terminal)
 
 ## 📋 Current Features (MVP)
 
-✅ **KYC System**
+✅ **User Flow**
 - Submit KYC applications
-- Check KYC status
-- Admin approval workflow
+- Request token purchases for specific properties
+- View portfolio with holdings across multiple properties
 
-✅ **Token Management**
-- Buy tokens (money → tokens conversion)
-- Check token balance
-- View token information
-
-✅ **Admin Panel**
+✅ **Admin Flow**  
 - Approve/reject KYC applications
-- Mint tokens manually
-- System management
+- Create properties (auto-deploys dedicated SPVToken for each)
+- Mint property-specific tokens for approved purchases
+- View investor summaries across all properties
 
-✅ **Property Display**
-- Browse available properties
-- View property details
-- Check token holdings
+✅ **Smart Contracts**
+- One ERC20 token per property (true SPV model)
+- Shared KYC registry for all properties
+- Transfer restrictions for compliance
+- Admin minting control
 
-## 🗺️ Development Roadmap
-
-See [PROJECT_PLAN.md](./PROJECT_PLAN.md) for detailed roadmap and next steps.
+## 🗺️ Next Steps
 
 ### Immediate Priorities
-1. Database integration (KYC documents, user data)
-2. Wallet connection (MetaMask/Web3)
-3. File upload for KYC documents
-4. Comprehensive testing
+1. **Database Integration** - PostgreSQL/MongoDB for KYC documents and user data
+2. **Payment Gateway** - Fiat on-ramp integration for token purchases
+3. **Enhanced UI/UX** - Improved responsiveness and user flows
+4. **Testing** - Comprehensive test coverage for contracts and APIs
 
 ### Planned Features
-- Multi-property support
-- Payment gateway integration
-- Dividend distribution
-- Secondary market for tokens
-- Mobile app
+- Multi-property support with marketplace
+- Dividend distribution system
+- Secondary market for token trading
+- Mobile application
+- Advanced analytics dashboard
 
 ## 📚 Documentation
 
-- **[PROJECT_PLAN.md](./PROJECT_PLAN.md)** - Comprehensive project plan and roadmap
+- **[FOLLOW_THESE_STEPS.md](./FOLLOW_THESE_STEPS.md)** - Quick start guide
 - [Foundry Documentation](https://book.getfoundry.sh/)
 - [OpenZeppelin Contracts](https://docs.openzeppelin.com/contracts)
 - [ethers.js Docs](https://docs.ethers.org/)
@@ -185,13 +187,14 @@ See [PROJECT_PLAN.md](./PROJECT_PLAN.md) for detailed roadmap and next steps.
 PORT=3000
 RPC_URL=http://127.0.0.1:8545
 PRIVATE_KEY=your_private_key
-SPV_TOKEN_ADDRESS=0x...
 KYC_REGISTRY_ADDRESS=0x...
-TOKEN_PRICE=100
 JWT_SECRET=replace_with_strong_secret
 ADMIN_WALLETS=0xAdminAddress1,0xAdminAddress2
 DATABASE_URL=postgresql://user:password@localhost:5432/landchain
 CORS_ORIGINS=http://localhost:5173
+
+# Note: SPVToken addresses are deployed per-property automatically
+# and stored with each property in the backend
 ```
 
 ### Frontend (.env)
@@ -233,11 +236,10 @@ Regulatory requirement for financial services. Users must be verified before the
 
 ## ⚠️ Current Limitations
 
-- KYC submission is placeholder (no document storage)
-- Wallet login is implemented, but some views still allow manual address input
-- Single property support (one SPV token)
-- Database only covers KYC metadata and purchase intents (no document storage yet)
-- Limited test coverage
+- In-memory storage (properties and purchases reset on backend restart)
+- Single SPV token (multi-property support planned)
+- No payment gateway integration yet
+- Local blockchain only (not deployed to testnet/mainnet)
 
 ## 🔮 Future Considerations
 

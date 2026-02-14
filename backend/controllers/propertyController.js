@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { deploySPVToken } from "../services/blockchainService.js";
 
 const createPropertySchema = z.object({
   name: z.string().min(1),
@@ -30,6 +31,20 @@ const withStats = (property) => {
 export const createProperty = async (req, res) => {
   try {
     const payload = createPropertySchema.parse(req.body);
+    
+    // Generate token name and symbol from property name
+    const tokenName = `${payload.name} Token`;
+    const tokenSymbol = payload.name
+      .split(' ')
+      .map(word => word[0])
+      .join('')
+      .toUpperCase()
+      .slice(0, 5) + 'T'; // e.g., "Luxury Villa" -> "LVT"
+    
+    // Deploy SPVToken contract for this property
+    console.log(`🏗️ Creating property: ${payload.name}`);
+    const deployment = await deploySPVToken(tokenName, tokenSymbol);
+    
     const property = {
       id: nextId++,
       name: payload.name,
@@ -41,13 +56,17 @@ export const createProperty = async (req, res) => {
       metadataURI: payload.metadataURI || "",
       tokensAvailable: payload.totalTokens,
       status: "ACTIVE",
+      tokenAddress: deployment.address,
+      tokenName: tokenName,
+      tokenSymbol: tokenSymbol,
+      deploymentTxHash: deployment.txHash,
       createdAt: new Date().toISOString(),
     };
 
     properties.push(property);
 
     return res.json({
-      message: "Property created",
+      message: "Property created and token deployed",
       property: withStats(property),
     });
   } catch (err) {

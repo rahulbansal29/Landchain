@@ -1,7 +1,7 @@
 ﻿import React, { useState } from "react";
 import { motion } from "framer-motion";
 import { Copy, RefreshCw, UserCheck, UserX } from "lucide-react";
-import { checkKYCStatus, getBalance, getTokenInfo, getInvestmentsByWallet } from "../services/api";
+import { checkKYCStatus, getInvestmentsByWallet } from "../services/api";
 
 export default function Portfolio() {
   const [wallet, setWallet] = useState("");
@@ -37,19 +37,14 @@ export default function Portfolio() {
     setPortfolio(null);
 
     try {
-      const [kyc, bal, info, investments] = await Promise.all([
+      const [kyc, investments] = await Promise.all([
         checkKYCStatus(wallet),
-        getBalance(wallet),
-        getTokenInfo(),
         getInvestmentsByWallet(wallet),
       ]);
 
       setPortfolio({
         wallet,
         kyc: !!(kyc && kyc.isApproved),
-        balance: (bal && (bal.balance ?? 0)) ?? 0,
-        name: (info && info.name) || "Unknown Token",
-        symbol: (info && info.symbol) || "TOK",
         holdings: investments?.holdings || [],
       });
     } catch (err) {
@@ -156,49 +151,31 @@ export default function Portfolio() {
                 display: "flex",
                 flexWrap: "wrap",
                 justifyContent: "space-between",
+                alignItems: "center",
                 gap: "1rem",
-                marginBottom: "1.4rem",
+                marginBottom: "1.8rem",
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", gap: "0.9rem" }}>
-                <div
+              <div>
+                <h2
                   style={{
-                    width: "3.4rem",
-                    height: "3.4rem",
-                    borderRadius: "999px",
-                    background: "linear-gradient(135deg,#f97316,#ec4899,#6366f1)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    color: "white",
-                    fontWeight: 800,
-                    fontSize: "1rem",
+                    margin: 0,
+                    fontSize: "1.5rem",
+                    fontWeight: 700,
+                    color: "#111827",
                   }}
                 >
-                  {(portfolio.symbol || "TK").slice(0, 2).toUpperCase()}
-                </div>
-
-                <div>
-                  <h2
-                    style={{
-                      margin: 0,
-                      fontSize: "1.3rem",
-                      fontWeight: 700,
-                      color: "#111827",
-                    }}
-                  >
-                    {portfolio.name}
-                  </h2>
-                  <p
-                    style={{
-                      margin: "0.15rem 0 0",
-                      fontSize: "0.92rem",
-                      color: "#6b7280",
-                    }}
-                  >
-                    {portfolio.balance} {portfolio.symbol}
-                  </p>
-                </div>
+                  Portfolio Holdings
+                </h2>
+                <p
+                  style={{
+                    margin: "0.3rem 0 0",
+                    fontSize: "0.92rem",
+                    color: "#6b7280",
+                  }}
+                >
+                  {formatAddress(portfolio.wallet)}
+                </p>
               </div>
 
               <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
@@ -229,77 +206,14 @@ export default function Portfolio() {
               </div>
             </div>
 
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-                gap: "0.9rem",
-              }}
-            >
-              <div
-                style={{
-                  borderRadius: "1rem",
-                  border: "1px solid rgba(148,163,184,0.6)",
-                  background: "#f9fafb",
-                  padding: "0.9rem 1rem",
-                }}
-              >
-                <p
-                  style={{
-                    margin: 0,
-                    fontSize: "0.78rem",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.11em",
-                    color: "#9ca3af",
-                  }}
-                >
-                  Wallet
-                </p>
-                <div
-                  style={{
-                    marginTop: "0.4rem",
-                    fontWeight: 600,
-                    color: "#111827",
-                  }}
-                >
-                  {formatAddress(portfolio.wallet)}
-                </div>
-              </div>
-
-              <div
-                style={{
-                  borderRadius: "1rem",
-                  border: "1px solid rgba(148,163,184,0.6)",
-                  background: "#f9fafb",
-                  padding: "0.9rem 1rem",
-                }}
-              >
-                <p
-                  style={{
-                    margin: 0,
-                    fontSize: "0.78rem",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.11em",
-                    color: "#9ca3af",
-                  }}
-                >
-                  Token summary
-                </p>
-                <div
-                  style={{
-                    marginTop: "0.4rem",
-                    fontWeight: 700,
-                    fontSize: "1.1rem",
-                    color: "#111827",
-                  }}
-                >
-                  {portfolio.balance} {portfolio.symbol}
-                </div>
-              </div>
-            </div>
+            {portfolio.holdings.length === 0 && (
+              <p style={{ color: "#6b7280", fontSize: "0.95rem", textAlign: "center", padding: "2rem 0" }}>
+                No property holdings found for this wallet.
+              </p>
+            )}
 
             {portfolio.holdings && portfolio.holdings.length > 0 && (
-              <div style={{ marginTop: "1.5rem" }}>
+              <div>
                 <h3
                   style={{
                     margin: "0 0 1rem 0",
@@ -308,7 +222,7 @@ export default function Portfolio() {
                     color: "#111827",
                   }}
                 >
-                  Property Holdings
+                  Property Investments
                 </h3>
 
                 <div

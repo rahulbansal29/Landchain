@@ -33,6 +33,7 @@ if (!fs.existsSync(kycRegistryPath)) {
 const SPVTokenJSON = JSON.parse(fs.readFileSync(spvTokenPath, "utf8"));
 const KYCRegistryJSON = JSON.parse(fs.readFileSync(kycRegistryPath, "utf8"));
 const SPVTokenABI = SPVTokenJSON.abi;
+const SPVTokenBytecode = SPVTokenJSON.bytecode;
 const KYCRegistryABI = KYCRegistryJSON.abi;
 
 // Env
@@ -43,7 +44,6 @@ const kycRegistryAddress = process.env.KYC_REGISTRY_ADDRESS;
 
 // Validate critical envs
 if (!privateKey) throw new Error("❌ PRIVATE_KEY missing in .env file");
-if (!spvTokenAddress) console.warn("⚠️ SPV_TOKEN_ADDRESS not set in .env — set after deployment");
 if (!kycRegistryAddress) console.warn("⚠️ KYC_REGISTRY_ADDRESS not set in .env — set after deployment");
 
 // Explicit provider setup for local network (prevents ENS lookups)
@@ -64,18 +64,53 @@ const safeContract = (address, abi) => {
 };
 
 // Exported factory functions
-export const getSPVTokenContract = () => safeContract(spvTokenAddress, SPVTokenABI);
+export const getSPVTokenContract = (tokenAddress) => safeContract(tokenAddress, SPVTokenABI);
 
 export const getKYCRegistryContract = () => safeContract(kycRegistryAddress, KYCRegistryABI);
 
-let cachedDecimals = null;
-export const getTokenDecimals = async () => {
-  if (cachedDecimals !== null) {
-    return cachedDecimals;
+const decimalsCache = new Map();
+export const getTokenDecimals = async (tokenAddress) => {
+  if (decimalsCache.has(tokenAddress)) {
+    return decimalsCache.get(tokenAddress);
   }
-  const token = getSPVTokenContract();
-  cachedDecimals = Number(await token.decimals());
-  return cachedDecimals;
+  const token = getSPVTokenContract(tokenAddress);
+  const decimals = Number(await token.decimals());
+  decimalsCache.set(tokenAddress, decimals);
+  return decimals;
+};
+
+/**
+ * Deploy a new SPVToken contract for a property
+ * @param {string} name - Token name (e.g., "Luxury Villa Token")
+ * @param {string} symbol - Token symbol (e.g., "LVT")
+ * @returns {Promise<{address: string, txHash: string}>}
+ */
+export const deploySPVToken = async (name, symbol) => {
+  try {
+    if (!kycRegistryAddress) {
+      throw new Error("KYC_REGISTRY_ADDRESS not set in .env");
+    }
+
+    const admin = wallet.address;
+    const factory = new ethers.ContractFactory(SPVTokenABI, SPVTokenBytecode, wallet);
+    
+    console.log(`🚀 Deploying SPVToken: ${name} (${symbol})...`);
+    const contract = await factory.deploy(name, symbol, kycRegistryAddress, admin);
+    await contract.waitForDeployment();
+    
+    const address = await contract.getAddress();
+    const deployTx = contract.deploymentTransaction();
+    
+    console.log(`✅ SPVToken deployed at: ${address}`);
+    
+    return {
+      address,
+      txHash: deployTx?.hash || "",
+    };
+  } catch (err) {
+    console.error("deploySPVToken error:", err);
+    throw err;
+  }
 };
 
 // Exports for reuse

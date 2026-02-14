@@ -40,13 +40,13 @@ export async function approveKYC(wallet) {
   return res.data;
 }
 
-export async function getBalance(wallet) {
-  const res = await api.get(`/token/balance/${wallet}`);
+export async function getBalance(wallet, propertyId) {
+  const res = await api.get(`/token/balance/${wallet}?propertyId=${propertyId}`);
   return res.data;
 }
 
-export async function getTokenInfo() {
-  const res = await api.get("/token/info");
+export async function getTokenInfo(propertyId) {
+  const res = await api.get(`/token/info?propertyId=${propertyId}`);
   return res.data;
 }
 

@@ -104,6 +104,10 @@ export const buyTokens = async (req, res) => {
       return res.status(404).json({ error: "Property not found" });
     }
 
+    if (!property.tokenAddress) {
+      return res.status(500).json({ error: "Property token not deployed" });
+    }
+
     if (property.status !== "ACTIVE") {
       return res.status(400).json({ error: "Property is not available" });
     }
@@ -120,8 +124,8 @@ export const buyTokens = async (req, res) => {
       return res.status(403).json({ error: "KYC not approved" });
     }
 
-    const spvToken = getSPVTokenContract();
-    const decimals = await getTokenDecimals();
+    const spvToken = getSPVTokenContract(property.tokenAddress);
+    const decimals = await getTokenDecimals(property.tokenAddress);
     const amount = ethers.parseUnits(String(payload.tokens), decimals);
     const tx = await spvToken.mint(wallet, amount);
     await tx.wait();
@@ -247,6 +251,10 @@ export const mintPurchase = async (req, res) => {
       return res.status(404).json({ error: "Property not found" });
     }
 
+    if (!property.tokenAddress) {
+      return res.status(500).json({ error: "Property token not deployed" });
+    }
+
     if (property.status !== "ACTIVE") {
       return res.status(400).json({ error: "Property is not available" });
     }
@@ -263,8 +271,8 @@ export const mintPurchase = async (req, res) => {
       return res.status(403).json({ error: "KYC not approved" });
     }
 
-    const spvToken = getSPVTokenContract();
-    const decimals = await getTokenDecimals();
+    const spvToken = getSPVTokenContract(property.tokenAddress);
+    const decimals = await getTokenDecimals(property.tokenAddress);
     const amount = ethers.parseUnits(String(purchase.tokens), decimals);
     const tx = await spvToken.mint(purchase.wallet, amount);
     await tx.wait();
@@ -333,13 +341,26 @@ export const getInvestorsSummary = async (req, res) => {
 export const getBalance = async (req, res) => {
   try {
     const wallet = cleanWallet(req.params.wallet);
-    const token = getSPVTokenContract();
+    const propertyId = Number(req.query.propertyId);
+    
+    if (!propertyId) {
+      return res.status(400).json({ error: "propertyId query parameter is required" });
+    }
+    
+    const properties = getPropertyStore();
+    const property = properties.find(p => p.id === propertyId);
+    
+    if (!property || !property.tokenAddress) {
+      return res.status(404).json({ error: "Property or token not found" });
+    }
 
+    const token = getSPVTokenContract(property.tokenAddress);
     const balance = await token.balanceOf(wallet);
-    const decimals = await getTokenDecimals();
+    const decimals = await getTokenDecimals(property.tokenAddress);
 
     return res.json({
       wallet,
+      propertyId,
       balance: ethers.formatUnits(balance, decimals),
     });
   } catch (err) {
@@ -350,14 +371,28 @@ export const getBalance = async (req, res) => {
 
 export const getTokenInfo = async (req, res) => {
   try {
-    const token = getSPVTokenContract();
+    const propertyId = Number(req.query.propertyId);
+    
+    if (!propertyId) {
+      return res.status(400).json({ error: "propertyId query parameter is required" });
+    }
+    
+    const properties = getPropertyStore();
+    const property = properties.find(p => p.id === propertyId);
+    
+    if (!property || !property.tokenAddress) {
+      return res.status(404).json({ error: "Property or token not found" });
+    }
 
+    const token = getSPVTokenContract(property.tokenAddress);
     const name = await token.name();
     const symbol = await token.symbol();
     const supply = await token.totalSupply();
-    const decimals = await getTokenDecimals();
+    const decimals = await getTokenDecimals(property.tokenAddress);
 
     return res.json({
+      propertyId,
+      tokenAddress: property.tokenAddress,
       name,
       symbol,
       totalSupply: ethers.formatUnits(supply, decimals),

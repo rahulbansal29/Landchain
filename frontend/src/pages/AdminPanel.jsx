@@ -310,10 +310,15 @@ function AdminPanel() {
                   <div style={{ fontWeight: 600, marginBottom: "0.25rem" }}>
                     {property.name}
                   </div>
-                  <div style={{ color: "#6b7280", fontSize: "0.875rem" }}>
+                  <div style={{ color: "#6b7280", fontSize: "0.875rem", marginBottom: "0.25rem" }}>
                     {property.tokensAvailable}/{property.totalTokens} tokens available - 
-                    {property.tokenPrice} per token - Status: {property.status}
+                    ₹{property.tokenPrice} per token - Status: {property.status}
                   </div>
+                  {property.tokenAddress && (
+                    <div style={{ color: "#8b5cf6", fontSize: "0.75rem", fontFamily: "monospace" }}>
+                      Token: {property.tokenSymbol} | {property.tokenAddress.slice(0, 10)}...{property.tokenAddress.slice(-8)}
+                    </div>
+                  )}
                 </div>
                 <button
                   onClick={() => handleDeleteProperty(property.id)}

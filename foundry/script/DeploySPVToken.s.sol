@@ -20,8 +20,8 @@ contract DeploySPVToken is Script {
 
         // 2️⃣ Deploy SPVToken linked to KYC registry
         SPVToken token = new SPVToken(
-            "GreenField SPV Token",
-            "GFT",
+            "LandChain Token",
+            "LCT",
             address(registry),
             admin
         );
