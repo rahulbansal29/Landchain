@@ -10,6 +10,7 @@ import tokenRoutes from "./routes/tokenRoutes.js";
 import propertyRoutes from "./routes/propertyRoutes.js";
 import adminAuthRoutes from "./routes/adminAuthRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
+import analyticsRoutes from "./routes/analyticsRoutes.js";
 
 dotenv.config();
 
@@ -42,6 +43,7 @@ app.use("/api/token", tokenRoutes);
 app.use("/api/properties", propertyRoutes);
 app.use("/api/admin-auth", adminAuthRoutes);
 app.use("/api/auth", authRoutes);
+app.use("/api/admin/analytics", analyticsRoutes);
 
 // Error fallback
 app.use((err, req, res, next) => {

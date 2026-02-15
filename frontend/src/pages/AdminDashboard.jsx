@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import api from "../services/api";
+import api, { getAdminAnalytics } from "../services/api";
 
 export default function AdminDashboard() {
   const [stats, setStats] = useState({
@@ -11,6 +11,13 @@ export default function AdminDashboard() {
   });
   const [recentPurchases, setRecentPurchases] = useState([]);
   const [recentKYC, setRecentKYC] = useState([]);
+  const [usage, setUsage] = useState({
+    users: { total: 0, loggedIn: 0, uniqueInvestors: 0 },
+    kyc: { submissions: 0, pending: 0, approved: 0, revoked: 0 },
+    purchases: { totalRequests: 0, pending: 0, minted: 0, tokensMinted: 0, amountMinted: 0 },
+    properties: { total: 0, active: 0, soldOut: 0 },
+    lastUpdated: null,
+  });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -20,10 +27,11 @@ export default function AdminDashboard() {
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
-      const [propertiesRes, purchasesRes, kycRes] = await Promise.all([
+      const [propertiesRes, purchasesRes, kycRes, analyticsRes] = await Promise.all([
         api.get("/properties"),
         api.get("/token/purchases/pending"),
         api.get("/kyc/pending"),
+        getAdminAnalytics(),
       ]);
 
       const properties = propertiesRes.data.properties || [];
@@ -35,6 +43,16 @@ export default function AdminDashboard() {
         activeProperties: properties.filter((p) => p.status === "ACTIVE").length,
         pendingPurchases: purchases.length,
         pendingKYC: kycApps.length,
+      });
+
+      setUsage({
+        users: analyticsRes?.users || { total: 0, loggedIn: 0, uniqueInvestors: 0 },
+        kyc: analyticsRes?.kyc || { submissions: 0, pending: 0, approved: 0, revoked: 0 },
+        purchases:
+          analyticsRes?.purchases ||
+          { totalRequests: 0, pending: 0, minted: 0, tokensMinted: 0, amountMinted: 0 },
+        properties: analyticsRes?.properties || { total: 0, active: 0, soldOut: 0 },
+        lastUpdated: analyticsRes?.lastUpdated || null,
       });
 
       setRecentPurchases(purchases.slice(0, 5));
@@ -199,6 +217,72 @@ export default function AdminDashboard() {
           </div>
           <div style={{ fontSize: "2rem", fontWeight: 700, color: "#2563eb" }}>
             {stats.pendingKYC}
+          </div>
+        </div>
+      </div>
+
+      {/* Usage Analytics */}
+      <div
+        style={{
+          padding: "1.5rem",
+          backgroundColor: "#fff",
+          border: "1px solid #e5e7eb",
+          borderRadius: "0.5rem",
+          marginBottom: "2rem",
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <h2 style={{ fontSize: "1.25rem", fontWeight: 600, margin: 0 }}>
+            Usage Overview
+          </h2>
+          {usage.lastUpdated && (
+            <div style={{ fontSize: "0.875rem", color: "#6b7280" }}>
+              Updated {new Date(usage.lastUpdated).toLocaleString()}
+            </div>
+          )}
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+            gap: "1rem",
+            marginTop: "1rem",
+          }}
+        >
+          <div style={{ padding: "1rem", border: "1px solid #e5e7eb", borderRadius: "0.5rem" }}>
+            <div style={{ color: "#6b7280", fontSize: "0.875rem" }}>Total Users</div>
+            <div style={{ fontSize: "1.75rem", fontWeight: 700 }}>{usage.users.total}</div>
+          </div>
+          <div style={{ padding: "1rem", border: "1px solid #e5e7eb", borderRadius: "0.5rem" }}>
+            <div style={{ color: "#6b7280", fontSize: "0.875rem" }}>Logged-in Users</div>
+            <div style={{ fontSize: "1.75rem", fontWeight: 700 }}>{usage.users.loggedIn}</div>
+          </div>
+          <div style={{ padding: "1rem", border: "1px solid #e5e7eb", borderRadius: "0.5rem" }}>
+            <div style={{ color: "#6b7280", fontSize: "0.875rem" }}>Unique Investors</div>
+            <div style={{ fontSize: "1.75rem", fontWeight: 700 }}>{usage.users.uniqueInvestors}</div>
+          </div>
+          <div style={{ padding: "1rem", border: "1px solid #e5e7eb", borderRadius: "0.5rem" }}>
+            <div style={{ color: "#6b7280", fontSize: "0.875rem" }}>KYC Submissions</div>
+            <div style={{ fontSize: "1.75rem", fontWeight: 700 }}>{usage.kyc.submissions}</div>
+          </div>
+          <div style={{ padding: "1rem", border: "1px solid #e5e7eb", borderRadius: "0.5rem" }}>
+            <div style={{ color: "#6b7280", fontSize: "0.875rem" }}>KYC Approved</div>
+            <div style={{ fontSize: "1.75rem", fontWeight: 700 }}>{usage.kyc.approved}</div>
+          </div>
+          <div style={{ padding: "1rem", border: "1px solid #e5e7eb", borderRadius: "0.5rem" }}>
+            <div style={{ color: "#6b7280", fontSize: "0.875rem" }}>Purchase Requests</div>
+            <div style={{ fontSize: "1.75rem", fontWeight: 700 }}>{usage.purchases.totalRequests}</div>
+          </div>
+          <div style={{ padding: "1rem", border: "1px solid #e5e7eb", borderRadius: "0.5rem" }}>
+            <div style={{ color: "#6b7280", fontSize: "0.875rem" }}>Tokens Minted</div>
+            <div style={{ fontSize: "1.75rem", fontWeight: 700 }}>{usage.purchases.tokensMinted}</div>
+          </div>
+          <div style={{ padding: "1rem", border: "1px solid #e5e7eb", borderRadius: "0.5rem" }}>
+            <div style={{ color: "#6b7280", fontSize: "0.875rem" }}>Minted Value</div>
+            <div style={{ fontSize: "1.75rem", fontWeight: 700 }}>
+              {usage.purchases.amountMinted.toLocaleString()}
+            </div>
           </div>
         </div>
       </div>

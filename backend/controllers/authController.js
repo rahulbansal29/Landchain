@@ -10,6 +10,7 @@ const adminWallets = (process.env.ADMIN_WALLETS || process.env.ADMIN_WALLET || "
   .filter(Boolean);
 
 const nonceStore = new Map();
+const userStore = new Map();
 const NONCE_TTL_MS = 10 * 60 * 1000;
 
 const cleanWallet = (addr) => {
@@ -72,6 +73,18 @@ export const verifySignature = async (req, res) => {
 
     nonceStore.delete(wallet);
 
+    const now = new Date().toISOString();
+    const existing = userStore.get(wallet) || {
+      wallet,
+      firstSeenAt: now,
+      loginCount: 0,
+    };
+    userStore.set(wallet, {
+      ...existing,
+      lastSeenAt: now,
+      loginCount: existing.loginCount + 1,
+    });
+
     const role = adminWallets.includes(wallet.toLowerCase()) ? "admin" : "user";
     const token = jwt.sign(
       { type: "user_session", wallet, role },
@@ -85,3 +98,5 @@ export const verifySignature = async (req, res) => {
     return res.status(400).json({ error: err.message });
   }
 };
+
+export const getUserStore = () => userStore;

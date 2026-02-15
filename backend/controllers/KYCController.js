@@ -117,4 +117,6 @@ export const getPendingKYC = async (req, res) => {
   }
 };
 
+export const getKYCStore = () => kycStore;
+
 

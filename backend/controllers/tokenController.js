@@ -229,6 +229,8 @@ export const getPendingPurchases = async (req, res) => {
   }
 };
 
+export const getPurchasesStore = () => purchases;
+
 export const mintPurchase = async (req, res) => {
   try {
     const purchaseId = Number(req.body.purchaseId);

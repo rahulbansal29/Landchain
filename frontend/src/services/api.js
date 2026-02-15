@@ -104,4 +104,9 @@ export async function getPendingKYC() {
   return res.data;
 }
 
+export async function getAdminAnalytics() {
+  const res = await api.get("/admin/analytics");
+  return res.data;
+}
+
 export default api;
