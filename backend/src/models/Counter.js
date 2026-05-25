@@ -1,0 +1,19 @@
+import mongoose from 'mongoose';
+
+const CounterSchema = new mongoose.Schema({
+  _id: { type: String, required: true },
+  seq: { type: Number, default: 0 },
+});
+
+const Counter = mongoose.models.Counter || mongoose.model('Counter', CounterSchema);
+
+export async function getNextSequence(name) {
+  const counter = await Counter.findByIdAndUpdate(
+    name,
+    { $inc: { seq: 1 } },
+    { returnDocument: 'after', upsert: true }
+  );
+  return counter.seq;
+}
+
+export default Counter;

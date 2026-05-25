@@ -1,42 +1,36 @@
 import jwt from "jsonwebtoken";
+import bcrypt from "bcryptjs";
+import User from "../src/models/User.js";
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-key";
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin123"; // Change this in production!
 
-// ✅ Admin password login
+// ✅ Admin password login (checks DB for admin user)
 export const adminLogin = async (req, res) => {
   try {
     const { password } = req.body;
-
-    console.log("Admin login attempt");
-    console.log("Received password:", password);
-    console.log("Expected password:", ADMIN_PASSWORD);
 
     if (!password) {
       return res.status(400).json({ error: "Password is required" });
     }
 
-    if (password !== ADMIN_PASSWORD) {
-      console.log("Password mismatch!");
-      return res.status(401).json({ error: "Invalid admin password" });
+    // find one admin user
+    const admin = await User.findOne({ role: 'admin' });
+    if (!admin || !admin.password) {
+      return res.status(401).json({ error: 'No admin user configured' });
     }
 
-    console.log("Password matched! Generating token...");
+    const match = await bcrypt.compare(password, admin.password);
+    if (!match) {
+      return res.status(401).json({ error: 'Invalid admin password' });
+    }
 
-    // Generate admin session token (valid for 8 hours)
     const token = jwt.sign(
-      { type: "admin_session", timestamp: Date.now() },
+      { type: "admin_session", wallet: admin.walletAddress },
       JWT_SECRET,
       { expiresIn: "8h" }
     );
 
-    console.log("Token generated successfully");
-
-    return res.json({
-      success: true,
-      token,
-      message: "Admin authenticated successfully",
-    });
+    return res.json({ success: true, token, wallet: admin.walletAddress });
   } catch (err) {
     console.error("adminLogin error:", err);
     return res.status(500).json({ error: err.message });
@@ -58,10 +52,7 @@ export const verifyAdminSession = async (req, res) => {
       return res.status(401).json({ error: "Invalid session type" });
     }
 
-    return res.json({
-      valid: true,
-      message: "Admin session is valid",
-    });
+    return res.json({ valid: true, wallet: decoded.wallet });
   } catch (err) {
     return res.status(401).json({ error: "Invalid or expired admin session" });
   }

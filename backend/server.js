@@ -1,6 +1,7 @@
 // server.js
 import express from "express";
 import dotenv from "dotenv";
+import { connectDB } from "./src/db.js";
 import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
@@ -11,6 +12,8 @@ import propertyRoutes from "./routes/propertyRoutes.js";
 import adminAuthRoutes from "./routes/adminAuthRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
 import analyticsRoutes from "./routes/analyticsRoutes.js";
+import { isDBConnected } from "./src/db.js";
+import { initBlockchain, getBlockchainStatus } from "./services/blockchainService.js";
 
 dotenv.config();
 
@@ -36,6 +39,14 @@ app.use(pinoHttp());
 
 // Health
 app.get("/", (req, res) => res.send("LandChain Backend Running ✅"));
+app.get("/api/health", (req, res) => {
+  res.json({
+    ok: true,
+    database: isDBConnected() ? "connected" : "disconnected",
+    blockchain: getBlockchainStatus(),
+    timestamp: new Date().toISOString(),
+  });
+});
 
 // API routes
 app.use("/api/kyc", kycRoutes);
@@ -64,10 +75,20 @@ process.on('uncaughtException', (err) => {
   process.exit(1);
 });
 
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-  console.log(`CORS enabled for all origins`);
-}).on('error', (err) => {
-  console.error('Server failed to start:', err);
-  process.exit(1);
-});
+// Connect to DB then start server
+(async () => {
+  try {
+    await connectDB();
+    await initBlockchain();
+    app.listen(PORT, () => {
+      console.log(`Server running on port ${PORT}`);
+      console.log(`CORS enabled for all origins`);
+    }).on('error', (err) => {
+      console.error('Server failed to start:', err);
+      process.exit(1);
+    });
+  } catch (err) {
+    console.error('Failed to start server due to DB error:', err);
+    process.exit(1);
+  }
+})();

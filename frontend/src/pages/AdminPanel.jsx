@@ -189,9 +189,35 @@ function AdminPanel() {
 
   if (!isAdmin) {
     return (
-      <div className="page-shell page-stack" style={{ maxWidth: 520, marginInline: "auto" }}>
+      <div className="page-shell page-stack" style={{ maxWidth: 560, marginInline: "auto" }}>
         <h1 className="page-title">Admin access</h1>
-        <p className="page-subtitle">Connect your admin wallet to access this panel.</p>
+        <p className="page-subtitle">
+          Use one of the options below. You only need your <strong>public wallet address</strong> (starts with 0x) — never share your private key or seed phrase.
+        </p>
+
+        <div className="info-card page-stack" style={{ gap: "1rem" }}>
+          <div>
+            <h2 style={{ margin: "0 0 0.5rem", fontSize: "1.1rem" }}>Option 1 — Password (fastest)</h2>
+            <p style={{ margin: 0, color: "#6b7280", fontSize: "0.9rem" }}>
+              Default password: <code>admin123</code> (from backend <code>.env</code>)
+            </p>
+            <Link to="/admin-login" className="btn btn-primary" style={{ marginTop: "0.75rem", display: "inline-block" }}>
+              Admin login with password
+            </Link>
+          </div>
+
+          <div>
+            <h2 style={{ margin: "0 0 0.5rem", fontSize: "1.1rem" }}>Option 2 — MetaMask wallet</h2>
+            <ol style={{ margin: "0.5rem 0", paddingLeft: "1.25rem", color: "#4b5563", fontSize: "0.9rem" }}>
+              <li>In MetaMask: account menu → copy your <strong>0x…</strong> address</li>
+              <li>Ask your dev to run: <code>npm run add-admin -- 0xYourAddress</code> in the <code>backend</code> folder</li>
+              <li>Restart the backend, then click <strong>Connect wallet</strong> and <strong>Approve</strong> (do not reject)</li>
+            </ol>
+            <p style={{ margin: 0, color: "#b91c1c", fontSize: "0.85rem" }}>
+              &quot;User rejected the request&quot; means you clicked Cancel in MetaMask — try again and approve.
+            </p>
+          </div>
+        </div>
       </div>
     );
   }

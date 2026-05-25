@@ -1,5 +1,7 @@
-import { z } from "zod";
-import { deploySPVToken } from "../services/blockchainService.js";
+import { z } from 'zod';
+import Property from '../src/models/Property.js';
+import { getNextSequence } from '../src/models/Counter.js';
+import { deploySPVToken, initBlockchain, isBlockchainReady } from '../services/blockchainService.js';
 
 const createPropertySchema = z.object({
   name: z.string().min(1),
@@ -11,102 +13,101 @@ const createPropertySchema = z.object({
   metadataURI: z.string().optional(),
 });
 
-const properties = [];
-let nextId = 1;
-
-const withStats = (property) => {
-  const tokensSold = property.totalTokens - property.tokensAvailable;
-  return {
-    ...property,
-    tokensSold,
-    percentageFunded: property.totalTokens
-      ? (tokensSold / property.totalTokens) * 100
-      : 0,
-    ownershipPerToken: property.totalTokens
-      ? (100 / property.totalTokens).toFixed(4)
-      : "0",
-  };
-};
-
 export const createProperty = async (req, res) => {
   try {
     const payload = createPropertySchema.parse(req.body);
-    
-    // Generate token name and symbol from property name
+    const propertyId = await getNextSequence('property');
+
     const tokenName = `${payload.name} Token`;
-    const tokenSymbol = payload.name
+    const tokenSymbol = `${payload.name
       .split(' ')
-      .map(word => word[0])
+      .map((word) => word[0])
       .join('')
       .toUpperCase()
-      .slice(0, 5) + 'T'; // e.g., "Luxury Villa" -> "LVT"
-    
-    // Deploy SPVToken contract for this property
-    console.log(`🏗️ Creating property: ${payload.name}`);
-    const deployment = await deploySPVToken(tokenName, tokenSymbol);
-    
-    const property = {
-      id: nextId++,
+      .slice(0, 5)}T`;
+
+    let tokenAddress = '';
+    let deploymentTxHash = '';
+
+    await initBlockchain();
+    let deployedOnChain = false;
+
+    if (isBlockchainReady()) {
+      try {
+        const deployment = await deploySPVToken(tokenName, tokenSymbol);
+        tokenAddress = deployment.address;
+        deploymentTxHash = deployment.txHash;
+        deployedOnChain = true;
+      } catch (chainErr) {
+        console.warn('On-chain token deploy skipped:', chainErr.message);
+      }
+    }
+
+    const doc = await Property.create({
+      propertyId,
       name: payload.name,
-      address: payload.address || "",
-      description: payload.description || "",
+      address: payload.address || '',
+      description: payload.description || '',
       totalValue: payload.totalValue || payload.totalTokens * payload.tokenPrice,
       totalTokens: payload.totalTokens,
       tokenPrice: payload.tokenPrice,
-      metadataURI: payload.metadataURI || "",
       tokensAvailable: payload.totalTokens,
-      status: "ACTIVE",
-      tokenAddress: deployment.address,
-      tokenName: tokenName,
-      tokenSymbol: tokenSymbol,
-      deploymentTxHash: deployment.txHash,
-      createdAt: new Date().toISOString(),
-    };
-
-    properties.push(property);
-
-    return res.json({
-      message: "Property created and token deployed",
-      property: withStats(property),
+      status: 'ACTIVE',
+      metadataURI: payload.metadataURI || '',
+      tokenAddress,
+      tokenName,
+      tokenSymbol,
+      deploymentTxHash,
     });
+
+    let message = 'Property saved to database';
+    if (deployedOnChain) {
+      message = 'Property created and token deployed on-chain';
+    } else if (isBlockchainReady()) {
+      message = 'Property saved (on-chain deploy failed — check Anvil is running)';
+    } else {
+      message =
+        'Property saved (no blockchain). Start Anvil on port 8545 or set BLOCKCHAIN_ENABLED=true when ready.';
+    }
+
+    return res.json({ message, property: doc.toAPI() });
   } catch (err) {
-    console.error("createProperty error:", err);
+    console.error('createProperty error:', err);
     return res.status(400).json({ error: err.message });
   }
 };
 
 export const getAllProperties = async (req, res) => {
-  const list = properties.map(withStats);
-  return res.json({ properties: list });
+  const docs = await Property.find().sort({ propertyId: 1 });
+  return res.json({ properties: docs.map((d) => d.toAPI()) });
 };
 
 export const getPropertyById = async (req, res) => {
   const propertyId = Number(req.params.id);
-  const property = properties.find((item) => item.id === propertyId);
-  if (!property) {
-    return res.status(404).json({ error: "Property not found" });
+  const doc = await Property.findOne({ propertyId });
+  if (!doc) {
+    return res.status(404).json({ error: 'Property not found' });
   }
-  return res.json({ property: withStats(property) });
+  return res.json({ property: doc.toAPI() });
 };
 
 export const deleteProperty = async (req, res) => {
   try {
     const propertyId = Number(req.params.id);
-    const index = properties.findIndex((item) => item.id === propertyId);
-    
-    if (index === -1) {
-      return res.status(404).json({ error: "Property not found" });
+    const doc = await Property.findOneAndDelete({ propertyId });
+    if (!doc) {
+      return res.status(404).json({ error: 'Property not found' });
     }
-
-    const deleted = properties.splice(index, 1)[0];
-    return res.json({ 
-      message: "Property deleted",
-      property: deleted
+    return res.json({
+      message: 'Property deleted',
+      property: doc.toAPI(),
     });
   } catch (err) {
-    console.error("deleteProperty error:", err);
+    console.error('deleteProperty error:', err);
     return res.status(400).json({ error: err.message });
   }
 };
 
-export const getPropertyStore = () => properties;
+export const findPropertyById = async (propertyId) => {
+  return Property.findOne({ propertyId });
+};

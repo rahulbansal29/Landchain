@@ -6,12 +6,18 @@
   "type": "module",
   "scripts": {
     "start": "node server.js",
+    "dev": "node --watch server.js",
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down",
+    "seed": "node scripts/seedAdmin.js",
+    "add-admin": "node scripts/addAdminWallet.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "ethers": "^6.15.0",
@@ -19,6 +25,7 @@
     "express-rate-limit": "^7.5.0",
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.3",
+    "mongoose": "^9.6.2",
     "pino": "^9.9.0",
     "pino-http": "^10.5.0",
     "zod": "^3.25.76"

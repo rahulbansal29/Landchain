@@ -1,16 +1,19 @@
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import { ethers } from "ethers";
+import User from "../src/models/User.js";
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-key";
 
-const adminWallets = (process.env.ADMIN_WALLETS || process.env.ADMIN_WALLET || "")
-  .split(",")
-  .map((wallet) => wallet.trim().toLowerCase())
-  .filter(Boolean);
+const adminWallets = [
+  ...new Set(
+    [process.env.ADMIN_WALLET, ...(process.env.ADMIN_WALLETS || "").split(",")]
+      .map((wallet) => wallet?.trim().toLowerCase())
+      .filter(Boolean)
+  ),
+];
 
 const nonceStore = new Map();
-const userStore = new Map();
 const NONCE_TTL_MS = 10 * 60 * 1000;
 
 const cleanWallet = (addr) => {
@@ -74,29 +77,33 @@ export const verifySignature = async (req, res) => {
     nonceStore.delete(wallet);
 
     const now = new Date().toISOString();
-    const existing = userStore.get(wallet) || {
-      wallet,
-      firstSeenAt: now,
-      loginCount: 0,
-    };
-    userStore.set(wallet, {
-      ...existing,
-      lastSeenAt: now,
-      loginCount: existing.loginCount + 1,
-    });
 
-    const role = adminWallets.includes(wallet.toLowerCase()) ? "admin" : "user";
-    const token = jwt.sign(
-      { type: "user_session", wallet, role },
-      JWT_SECRET,
-      { expiresIn: "8h" }
-    );
+    const existing = await User.findOne({ walletAddress: wallet.toLowerCase() });
+    const isEnvAdmin = adminWallets.includes(wallet.toLowerCase());
+    const role =
+      isEnvAdmin || existing?.role === "admin" ? "admin" : "user";
 
-    return res.json({ token, wallet, role });
+    try {
+      const doc = await User.findOneAndUpdate(
+        { walletAddress: wallet.toLowerCase() },
+        { $set: { walletAddress: wallet.toLowerCase(), role }, $setOnInsert: { createdAt: now } },
+        { upsert: true, returnDocument: 'after' }
+      );
+
+      const token = jwt.sign(
+        { type: "user_session", wallet: doc.walletAddress, role: doc.role },
+        JWT_SECRET,
+        { expiresIn: "8h" }
+      );
+
+      return res.json({ token, wallet: doc.walletAddress, role: doc.role });
+    } catch (dbErr) {
+      console.error('Error upserting user:', dbErr);
+      return res.status(500).json({ error: 'Failed to persist user' });
+    }
   } catch (err) {
     console.error("verifySignature error:", err);
     return res.status(400).json({ error: err.message });
   }
 };
 
-export const getUserStore = () => userStore;

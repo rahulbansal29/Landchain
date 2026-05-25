@@ -1,14 +1,17 @@
-// backend/controllers/kycController.js
-
-import { getKYCRegistryContract } from "../services/blockchainService.js";
-import { ethers } from "ethers";
-import { z } from "zod";
-
-const kycStore = new Map();
+import { ethers } from 'ethers';
+import { z } from 'zod';
+import KYC from '../src/models/KYC.js';
+import {
+  approveKYCOnChain as approveKYCChain,
+  revokeKYCOnChain as revokeKYCChain,
+  isKYCApprovedOnChain,
+  initBlockchain,
+  isBlockchainReady,
+} from '../services/blockchainService.js';
 
 const cleanWallet = (addr) => {
-  if (!addr) throw new Error("Wallet is required");
-  return ethers.getAddress(addr.trim());
+  if (!addr) throw new Error('Wallet is required');
+  return ethers.getAddress(String(addr).trim()).toLowerCase();
 };
 
 const submitSchema = z.object({
@@ -21,19 +24,24 @@ export const submitKYC = async (req, res) => {
     const payload = submitSchema.parse(req.body || {});
     const wallet = cleanWallet(payload.wallet);
 
-    kycStore.set(wallet, {
-      status: "PENDING",
-      metadata: payload.metadata || {},
-      updatedAt: new Date().toISOString(),
-    });
+    const doc = await KYC.findOneAndUpdate(
+      { walletAddress: wallet },
+      {
+        walletAddress: wallet,
+        status: 'PENDING',
+        metadata: payload.metadata || {},
+        updatedAt: new Date(),
+      },
+      { upsert: true, returnDocument: 'after' }
+    );
 
     return res.json({
-      wallet,
-      status: "PENDING",
-      message: "KYC submitted. Waiting for admin approval.",
+      wallet: doc.walletAddress,
+      status: doc.status,
+      message: 'KYC submitted. Waiting for admin approval.',
     });
   } catch (err) {
-    console.error("submitKYC error:", err);
+    console.error('submitKYC error:', err);
     return res.status(400).json({ error: err.message });
   }
 };
@@ -41,18 +49,21 @@ export const submitKYC = async (req, res) => {
 export const checkKYCStatus = async (req, res) => {
   try {
     const wallet = cleanWallet(req.params.wallet);
-    const kycRegistry = getKYCRegistryContract();
-    const isApproved = await kycRegistry.isKYCApproved(wallet);
-    const local = kycStore.get(wallet);
+    const local = await KYC.findOne({ walletAddress: wallet });
+
+    initBlockchain();
+    const onChainApproved = isBlockchainReady()
+      ? await isKYCApprovedOnChain(ethers.getAddress(wallet))
+      : local?.status === 'APPROVED';
 
     return res.json({
       wallet,
-      isApproved,
-      localStatus: local?.status || "NONE",
-      lastUpdated: local?.updatedAt || null,
+      isApproved: onChainApproved || local?.status === 'APPROVED',
+      localStatus: local?.status || 'NONE',
+      lastUpdated: local?.updatedAt?.toISOString?.() || null,
     });
   } catch (err) {
-    console.error("checkKYCStatus error:", err);
+    console.error('checkKYCStatus error:', err);
     return res.status(400).json({ error: err.message });
   }
 };
@@ -60,20 +71,26 @@ export const checkKYCStatus = async (req, res) => {
 export const approveKYCOnChain = async (req, res) => {
   try {
     const wallet = cleanWallet(req.body.wallet);
-    const kycRegistry = getKYCRegistryContract();
+    let txHash = '';
 
-    const tx = await kycRegistry.approveKYC(wallet);
-    await tx.wait();
+    initBlockchain();
+    if (isBlockchainReady()) {
+      txHash = await approveKYCChain(wallet);
+    }
 
-    kycStore.set(wallet, {
-      status: "APPROVED",
-      metadata: kycStore.get(wallet)?.metadata || {},
-      updatedAt: new Date().toISOString(),
+    const doc = await KYC.findOneAndUpdate(
+      { walletAddress: wallet },
+      { status: 'APPROVED', updatedAt: new Date() },
+      { upsert: true, returnDocument: 'after' }
+    );
+
+    return res.json({
+      wallet: doc.walletAddress,
+      txHash,
+      status: doc.status,
     });
-
-    return res.json({ wallet, txHash: tx.hash, status: "APPROVED" });
   } catch (err) {
-    console.error("approveKYCOnChain error:", err);
+    console.error('approveKYC error:', err);
     return res.status(400).json({ error: err.message });
   }
 };
@@ -81,42 +98,55 @@ export const approveKYCOnChain = async (req, res) => {
 export const revokeKYCOnChain = async (req, res) => {
   try {
     const wallet = cleanWallet(req.body.wallet);
-    const kycRegistry = getKYCRegistryContract();
+    let txHash = '';
 
-    const tx = await kycRegistry.revokeKYC(wallet);
-    await tx.wait();
+    initBlockchain();
+    if (isBlockchainReady()) {
+      txHash = await revokeKYCChain(wallet);
+    }
 
-    kycStore.set(wallet, {
-      status: "REVOKED",
-      metadata: kycStore.get(wallet)?.metadata || {},
-      updatedAt: new Date().toISOString(),
+    const doc = await KYC.findOneAndUpdate(
+      { walletAddress: wallet },
+      { status: 'REVOKED', updatedAt: new Date() },
+      { upsert: true, returnDocument: 'after' }
+    );
+
+    return res.json({
+      wallet: doc.walletAddress,
+      txHash,
+      status: doc.status,
     });
-
-    return res.json({ wallet, txHash: tx.hash, status: "REVOKED" });
   } catch (err) {
-    console.error("revokeKYCOnChain error:", err);
+    console.error('revokeKYC error:', err);
     return res.status(400).json({ error: err.message });
   }
 };
 
 export const getPendingKYC = async (req, res) => {
   try {
-    const applications = Array.from(kycStore.entries())
-      .filter(([, entry]) => entry.status === "PENDING")
-      .map(([wallet, entry]) => ({
-        wallet,
-        status: entry.status,
-        metadata: entry.metadata || {},
-        updatedAt: entry.updatedAt || null,
-      }));
+    const docs = await KYC.find({ status: 'PENDING' }).sort({ updatedAt: -1 });
+    const applications = docs.map((doc) => ({
+      wallet: doc.walletAddress,
+      status: doc.status,
+      metadata: doc.metadata || {},
+      updatedAt: doc.updatedAt?.toISOString?.() || null,
+    }));
 
     return res.json({ applications });
   } catch (err) {
-    console.error("getPendingKYC error:", err);
+    console.error('getPendingKYC error:', err);
     return res.status(400).json({ error: err.message });
   }
 };
 
-export const getKYCStore = () => kycStore;
+export async function isWalletKYCApproved(wallet) {
+  const normalized = cleanWallet(wallet);
+  const local = await KYC.findOne({ walletAddress: normalized });
+  if (local?.status === 'APPROVED') return true;
 
-
+  initBlockchain();
+  if (isBlockchainReady()) {
+    return isKYCApprovedOnChain(ethers.getAddress(normalized));
+  }
+  return false;
+}

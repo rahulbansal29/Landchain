@@ -22,7 +22,7 @@ export default function AdminLogin() {
       localStorage.setItem("admin_session", response.data.token);
       
       // Redirect to admin dashboard
-      navigate("/dashboard");
+      navigate("/admin");
       window.location.reload(); // Reload to update admin state
     } catch (err) {
       console.error("Login error:", err);
