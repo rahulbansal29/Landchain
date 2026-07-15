@@ -8,7 +8,16 @@ import {
   initBlockchain,
   isBlockchainReady,
   mintTokensOnChain,
+  getTreasuryAddress,
+  verifyPayment,
 } from '../services/blockchainService.js';
+
+// Demo exchange rate: how many INR equal 1 test-ETH. Configurable via .env.
+// e.g. 100000 means ₹100,000 = 1 ETH, so a ₹1,000 purchase costs 0.01 ETH.
+const INR_PER_ETH = Number(process.env.DEMO_INR_PER_ETH || 100000);
+
+// Convert an integer INR amount to wei using BigInt (no floating-point error).
+const inrToWei = (inr) => (BigInt(Math.round(inr)) * (10n ** 18n)) / BigInt(INR_PER_ETH);
 
 const buySchema = z.object({
   wallet: z.string().min(10),
@@ -165,6 +174,132 @@ export const buyTokens = async (req, res) => {
     });
   } catch (err) {
     console.error('buyTokens error:', err);
+    return res.status(400).json({ error: err.message });
+  }
+};
+
+// Price quote: tells the frontend the cost in INR and the equivalent ETH,
+// plus the treasury address the buyer must pay.
+export const getQuote = async (req, res) => {
+  try {
+    const propertyId = Number(req.query.propertyId);
+    const tokens = Number(req.query.tokens);
+
+    if (!propertyId || !tokens || tokens <= 0) {
+      return res.status(400).json({ error: 'propertyId and a positive tokens value are required' });
+    }
+
+    const property = await findPropertyById(propertyId);
+    if (!property) {
+      return res.status(404).json({ error: 'Property not found' });
+    }
+
+    const moneyAmount = tokens * property.tokenPrice;
+    const priceWei = inrToWei(moneyAmount);
+
+    await initBlockchain();
+    const treasury = isBlockchainReady() ? getTreasuryAddress() : '';
+
+    return res.json({
+      propertyId,
+      tokens,
+      tokenPrice: property.tokenPrice,
+      moneyAmount,
+      inrPerEth: INR_PER_ETH,
+      priceWei: priceWei.toString(),
+      priceEth: ethers.formatEther(priceWei),
+      treasury,
+    });
+  } catch (err) {
+    console.error('getQuote error:', err);
+    return res.status(400).json({ error: err.message });
+  }
+};
+
+// Self-service paid purchase: buyer has already sent ETH to the treasury.
+// We verify that payment on-chain, then mint tokens to them.
+export const buyTokensOnChain = async (req, res) => {
+  try {
+    const payload = buySchema.parse({
+      wallet: String(req.body.wallet || ''),
+      propertyId: Number(req.body.propertyId),
+      tokens: Number(req.body.tokens),
+    });
+    const paymentTxHash = String(req.body.paymentTxHash || '').trim();
+    if (!paymentTxHash) {
+      return res.status(400).json({ error: 'paymentTxHash is required' });
+    }
+
+    const wallet = cleanWallet(payload.wallet);
+    const property = await findPropertyById(payload.propertyId);
+
+    if (!property) {
+      return res.status(404).json({ error: 'Property not found' });
+    }
+    if (property.status !== 'ACTIVE') {
+      return res.status(400).json({ error: 'Property is not available' });
+    }
+    if (payload.tokens > property.tokensAvailable) {
+      return res.status(400).json({ error: `Only ${property.tokensAvailable} tokens available` });
+    }
+
+    const kycOk = await isWalletKYCApproved(wallet);
+    if (!kycOk) {
+      return res.status(403).json({ error: 'KYC not approved' });
+    }
+
+    await initBlockchain();
+    if (!isBlockchainReady() || !property.tokenAddress) {
+      return res.status(503).json({
+        error: 'On-chain payment requires a running chain and a deployed token for this property',
+      });
+    }
+
+    // Reject a payment tx that was already used for another purchase.
+    const alreadyUsed = await Purchase.findOne({ paymentTxHash });
+    if (alreadyUsed) {
+      return res.status(409).json({ error: 'This payment has already been used' });
+    }
+
+    const moneyAmount = payload.tokens * property.tokenPrice;
+    const requiredWei = inrToWei(moneyAmount);
+
+    // The core check: did the buyer really pay the treasury enough ETH?
+    await verifyPayment({
+      txHash: paymentTxHash,
+      from: ethers.getAddress(wallet),
+      to: getTreasuryAddress(),
+      minWei: requiredWei,
+    });
+
+    const purchaseId = await getNextSequence('purchase');
+    const purchase = await Purchase.create({
+      purchaseId,
+      wallet,
+      propertyId: property.propertyId,
+      tokens: payload.tokens,
+      tokenPrice: property.tokenPrice,
+      moneyAmount,
+      status: 'PENDING',
+      isKYCApproved: true,
+      paymentTxHash,
+    });
+
+    const txHash = await finalizeMint(property, purchase, wallet);
+
+    return res.json({
+      message: 'Payment verified and tokens minted',
+      wallet,
+      propertyId: property.propertyId,
+      tokensMinted: payload.tokens,
+      tokenPrice: property.tokenPrice,
+      moneyAmount,
+      priceEth: ethers.formatEther(requiredWei),
+      paymentTxHash,
+      txHash,
+    });
+  } catch (err) {
+    console.error('buyTokensOnChain error:', err);
     return res.status(400).json({ error: err.message });
   }
 };

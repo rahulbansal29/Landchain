@@ -136,24 +136,6 @@ export default function AdminLogin() {
             {loading ? "Verifying..." : "Access Admin Panel"}
           </button>
         </form>
-
-        <div
-          style={{
-            marginTop: "1.5rem",
-            padding: "1rem",
-            backgroundColor: "#f9fafb",
-            borderRadius: "0.375rem",
-            fontSize: "0.875rem",
-            color: "#6b7280",
-          }}
-        >
-          <p style={{ margin: 0, marginBottom: "0.5rem" }}>
-            <strong>Demo Credentials:</strong>
-          </p>
-          <p style={{ margin: 0, fontFamily: "monospace" }}>
-            Password: <strong>admin123</strong>
-          </p>
-        </div>
       </div>
     </div>
   );

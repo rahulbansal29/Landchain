@@ -2,12 +2,15 @@
 
 ## ✅ Running the Platform
 
-### Step 1: Start Blockchain
+### Step 1: Start Blockchain (persistent)
 ```powershell
 cd foundry
-anvil
+anvil --state anvil-state.json
 ```
-Keep this terminal open.
+Keep this terminal open. The `--state` flag saves the whole chain to
+`anvil-state.json` on exit and reloads it on the next start — so deployed
+contracts, KYC approvals, and token balances **survive restarts**.
+(Shortcut: from the `backend` folder you can run `npm run chain`, which does the same thing.)
 
 ### Step 2: Deploy KYC Registry (First Time Only)
 ```powershell
@@ -17,6 +20,12 @@ forge script script/DeploySPVToken.s.sol:DeploySPVToken --rpc-url http://127.0.0
 ```
 Copy the **KYCRegistry address** to `backend/.env`.  
 **Note:** SPVToken contracts are deployed automatically when admin creates properties.
+
+**Because the chain now persists, you only do Step 2 once.** As long as you keep
+`anvil-state.json` and always start Anvil with `--state`, you never redeploy or
+recreate properties again. If you ever delete `anvil-state.json`, the chain
+resets — then clear stale data (`db.properties`, `db.purchases`, `db.kycs` in
+MongoDB) and redo Step 2.
 
 ### Step 3: Start Backend
 ```powershell
@@ -29,7 +38,7 @@ Backend runs on http://localhost:3000
 ```powershell
 cd frontend
 npm run dev
-```
+```  
 Frontend runs on http://localhost:5173
 
 ### Step 5: Access the Platform
@@ -108,14 +117,10 @@ If everything breaks, run these commands:
 # Stop all Node processes
 Get-Process -Name node | Stop-Process -Force
 
-# Restart Anvil
+# Restart Anvil (persistent — reloads your saved chain)
 cd foundry
-anvil
+anvil --state anvil-state.json
 
-# Redeploy contracts
-forge script script/DeploySPVToken.s.sol:DeploySPVToken --rpc-url http://127.0.0.1:8545 --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 --broadcast
-
-# Update backend/.env with new addresses
 # Restart backend
 cd backend
 npm start
@@ -123,6 +128,15 @@ npm start
 # Restart frontend
 cd frontend
 npm run dev
+```
+
+**Full wipe (only if you want a truly clean chain):** stop Anvil, delete
+`foundry/anvil-state.json`, clear stale MongoDB data, then start Anvil with
+`--state` again and redo Step 2 (deploy KYC Registry):
+
+```powershell
+# clear stale DB records that referenced the old chain
+mongosh "mongodb://localhost:27017/landchain" --eval "db.properties.deleteMany({}); db.purchases.deleteMany({}); db.kycs.deleteMany({});"
 ```
 
 ---

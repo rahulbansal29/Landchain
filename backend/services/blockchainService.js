@@ -184,4 +184,42 @@ export async function mintTokensOnChain(tokenAddress, walletAddress, tokenAmount
   return tx.hash;
 }
 
+// The wallet that receives buyer payments. Defaults to the backend signer
+// (Anvil account 0) unless TREASURY_ADDRESS is set in .env.
+export function getTreasuryAddress() {
+  ensureReady();
+  const custom = process.env.TREASURY_ADDRESS;
+  if (custom && ethers.isAddress(custom)) return ethers.getAddress(custom);
+  return wallet.address;
+}
+
+/**
+ * Verify that a buyer actually paid on-chain before we mint tokens.
+ * Checks the transaction was mined & successful, sent to the treasury,
+ * from the buyer's own wallet, for at least the required amount.
+ */
+export async function verifyPayment({ txHash, from, to, minWei }) {
+  ensureReady();
+  if (!txHash) throw new Error('Missing payment transaction hash');
+
+  const tx = await provider.getTransaction(txHash);
+  if (!tx) throw new Error('Payment transaction not found on chain');
+
+  // Wait for it to be mined (Anvil mines instantly, but this is safe).
+  const receipt = await provider.waitForTransaction(txHash, 1, 15000);
+  if (!receipt || receipt.status !== 1) {
+    throw new Error('Payment transaction not confirmed');
+  }
+  if (!tx.to || ethers.getAddress(tx.to) !== ethers.getAddress(to)) {
+    throw new Error('Payment was not sent to the treasury address');
+  }
+  if (ethers.getAddress(tx.from) !== ethers.getAddress(from)) {
+    throw new Error('Payment must come from your own wallet');
+  }
+  if (tx.value < BigInt(minWei)) {
+    throw new Error('Payment amount is less than the required cost');
+  }
+  return true;
+}
+
 export { provider, wallet };

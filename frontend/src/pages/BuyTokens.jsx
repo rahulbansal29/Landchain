@@ -1,11 +1,12 @@
-﻿import { useEffect, useState } from "react";
-import { buyTokens, getProperties } from "../services/api";
+import { useEffect, useState } from "react";
+import { getProperties, getQuote, buyTokensOnChain } from "../services/api";
 
 export default function BuyTokens() {
   const [properties, setProperties] = useState([]);
   const [propertyId, setPropertyId] = useState("");
   const [tokens, setTokens] = useState("");
   const [wallet, setWallet] = useState("");
+  const [quote, setQuote] = useState(null);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -23,40 +24,89 @@ export default function BuyTokens() {
     loadProperties();
   }, []);
 
+  // Fetch a live price quote whenever the property or token count changes.
+  useEffect(() => {
+    const id = Number(propertyId);
+    const amount = Number(tokens);
+    if (!id || !amount || amount <= 0) {
+      setQuote(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const q = await getQuote(id, amount);
+        if (!cancelled) setQuote(q);
+      } catch {
+        if (!cancelled) setQuote(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [propertyId, tokens]);
+
   const handleBuy = async () => {
-    if (!propertyId) {
-      setMessage("Please select a property.");
-      return;
-    }
+    setMessage("");
 
-    if (!tokens || Number(tokens) <= 0) {
-      setMessage("Please enter a valid token amount.");
-      return;
-    }
+    if (!propertyId) return setMessage("Please select a property.");
+    if (!tokens || Number(tokens) <= 0) return setMessage("Please enter a valid token amount.");
+    if (!wallet) return setMessage("Please enter the wallet address to receive tokens.");
+    if (!window.ethereum) return setMessage("MetaMask not detected. Install/enable it to pay.");
 
-    if (!wallet) {
-      setMessage("Please enter the wallet address you want to receive tokens.");
-      return;
-    }
-
-    setMessage("Processing...");
     setLoading(true);
-
     try {
-      const data = await buyTokens({
+      // 1. Get the current price (INR + ETH) and the treasury address.
+      setMessage("Getting price quote…");
+      const q = await getQuote(Number(propertyId), Number(tokens));
+      setQuote(q);
+
+      if (!q.treasury) {
+        setMessage("Blockchain is not available, so on-chain payment can't be processed right now.");
+        return;
+      }
+
+      // 2. The paying MetaMask account must match the receiving wallet.
+      const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
+      const payer = accounts[0];
+      if (!payer || payer.toLowerCase() !== wallet.toLowerCase()) {
+        setMessage(
+          `Your active MetaMask account (${payer || "none"}) must match the receiving wallet (${wallet}). Switch accounts in MetaMask and try again.`
+        );
+        return;
+      }
+
+      // 3. Send the ETH payment to the treasury (buyer confirms in MetaMask).
+      setMessage(`Confirm the payment in MetaMask: ${q.priceEth} ETH (₹${q.moneyAmount})…`);
+      const valueHex = "0x" + BigInt(q.priceWei).toString(16);
+      const paymentTxHash = await window.ethereum.request({
+        method: "eth_sendTransaction",
+        params: [{ from: payer, to: q.treasury, value: valueHex }],
+      });
+
+      // 4. Backend verifies the payment on-chain, then mints the tokens.
+      setMessage("Payment sent. Verifying on-chain and minting your tokens…");
+      const data = await buyTokensOnChain({
         wallet,
         propertyId: Number(propertyId),
         tokens: Number(tokens),
+        paymentTxHash,
       });
-      const purchase = data.purchase;
+
       setMessage(
-        `✅ Purchase request submitted!\n\nProperty ID: ${purchase.propertyId}\nTokens: ${purchase.tokens}\nTotal cost: ₹${purchase.moneyAmount}\nKYC Approved: ${purchase.isKYCApproved ? "Yes" : "No"}\nStatus: ${purchase.status}\n\nAn admin will review and mint tokens after approval.`
+        `✅ Success!\n\nTokens minted: ${data.tokensMinted}\nPaid: ${data.priceEth} ETH (₹${data.moneyAmount})\nPayment tx: ${data.paymentTxHash}\nToken mint tx: ${data.txHash || "(recorded in database)"}`
       );
+      setTokens("");
+      setQuote(null);
     } catch (e) {
-      setMessage(
-        e.response?.data?.error ||
-          "Unable to reach backend. Please check that the server is running."
-      );
+      // MetaMask user-rejected code is 4001.
+      if (e?.code === 4001) {
+        setMessage("You cancelled the payment in MetaMask.");
+      } else {
+        setMessage(
+          e.response?.data?.error || e.message || "Purchase failed. Is the backend and Anvil running?"
+        );
+      }
     } finally {
       setLoading(false);
     }
@@ -66,8 +116,8 @@ export default function BuyTokens() {
     <div className="page-shell">
       <h1 className="page-title">Buy tokens</h1>
       <p className="page-subtitle">
-        Choose a property and request tokens. An admin will review and mint to
-        your wallet after KYC approval.
+        Choose a property, pay with test ETH from your wallet, and receive tokens
+        instantly once the payment is verified on-chain. You must be KYC-approved first.
       </p>
 
       <div className="page-stack">
@@ -110,9 +160,26 @@ export default function BuyTokens() {
             />
           </div>
 
+          {quote && (
+            <div
+              className="info-card"
+              style={{ gridColumn: "1 / -1", background: "#f8fafc" }}
+            >
+              <div style={{ fontWeight: 600, marginBottom: "0.25rem" }}>Price</div>
+              <div style={{ color: "#4b5563", fontSize: "0.9rem" }}>
+                {quote.tokens} tokens × ₹{quote.tokenPrice} = <strong>₹{quote.moneyAmount}</strong>
+                {"  →  "}
+                <strong>{quote.priceEth} ETH</strong> (test)
+              </div>
+              <div style={{ color: "#6b7280", fontSize: "0.75rem", marginTop: "0.25rem", fontFamily: "monospace" }}>
+                Pay to treasury: {quote.treasury || "blockchain unavailable"}
+              </div>
+            </div>
+          )}
+
           <div style={{ display: "flex", gap: "0.75rem", marginTop: "0.5rem" }}>
             <button className="btn btn-primary" onClick={handleBuy} disabled={loading}>
-              {loading ? "Processing" : "Request tokens"}
+              {loading ? "Processing…" : "Pay with ETH & buy"}
             </button>
             <button
               className="btn btn-ghost"
@@ -120,7 +187,7 @@ export default function BuyTokens() {
               onClick={() => {
                 setPropertyId("");
                 setTokens("");
-                setWallet("");
+                setQuote(null);
                 setMessage("");
               }}
             >

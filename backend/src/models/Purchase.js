@@ -10,8 +10,16 @@ const PurchaseSchema = new mongoose.Schema({
   status: { type: String, enum: ['PENDING', 'MINTED'], default: 'PENDING' },
   isKYCApproved: { type: Boolean, default: false },
   txHash: { type: String, default: '' },
+  paymentTxHash: { type: String, default: '' },
   createdAt: { type: Date, default: Date.now },
   mintedAt: { type: Date },
 });
+
+// Prevent the same on-chain payment from being used for more than one purchase.
+// Partial index so the many empty ('') hashes on legacy purchases don't collide.
+PurchaseSchema.index(
+  { paymentTxHash: 1 },
+  { unique: true, partialFilterExpression: { paymentTxHash: { $gt: '' } } }
+);
 
 export default mongoose.model('Purchase', PurchaseSchema);

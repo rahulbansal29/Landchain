@@ -60,6 +60,16 @@ export async function requestPurchase({ wallet, propertyId, tokens }) {
   return res.data;
 }
 
+export async function getQuote(propertyId, tokens) {
+  const res = await api.get(`/token/quote?propertyId=${propertyId}&tokens=${tokens}`);
+  return res.data;
+}
+
+export async function buyTokensOnChain({ wallet, propertyId, tokens, paymentTxHash }) {
+  const res = await api.post("/token/buy-onchain", { wallet, propertyId, tokens, paymentTxHash });
+  return res.data;
+}
+
 export async function createProperty(payload) {
   const res = await api.post("/properties", payload);
   return res.data;

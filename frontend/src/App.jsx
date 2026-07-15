@@ -1,5 +1,6 @@
-import { BrowserRouter, Routes, Route, NavLink } from "react-router-dom";
+import { BrowserRouter, Routes, Route, NavLink, Navigate } from "react-router-dom";
 import { useEffect, useState } from "react";
+import { jwtDecode } from "jwt-decode";
 import "./App.css";
 
 import Portfolio from "./pages/Portfolio";
@@ -11,18 +12,60 @@ import BuyTokens from "./pages/BuyTokens";
 import PropertyLanding from "./pages/PropertyLanding";
 import { signInWithWallet, signOut } from "./services/auth";
 
+// Single source of truth for "who is logged in and are they an admin".
+// The real role lives inside the signed JWT — we decode it instead of trusting
+// a hardcoded value. (Security is still enforced by the backend; this only
+// controls what the UI shows.)
+function readAuth() {
+  const token = localStorage.getItem("auth_token");        // wallet login (user_session)
+  const adminSession = localStorage.getItem("admin_session"); // password login (admin_session)
+  let wallet = localStorage.getItem("wallet_address") || "";
+  let role = "user";
+  let isAdmin = false;
+
+  if (token) {
+    try {
+      const decoded = jwtDecode(token);
+      wallet = wallet || decoded.wallet || "";
+      if (decoded.role === "admin") {
+        isAdmin = true;
+        role = "admin";
+      }
+    } catch {
+      // ignore malformed/expired token
+    }
+  }
+
+  if (adminSession) {
+    try {
+      const decoded = jwtDecode(adminSession);
+      if (decoded.type === "admin_session") {
+        isAdmin = true;
+        role = "admin";
+        wallet = wallet || decoded.wallet || "";
+      }
+    } catch {
+      // ignore malformed/expired token
+    }
+  }
+
+  if (!wallet && !isAdmin) return null;
+  return { wallet, role, isAdmin };
+}
+
+// Route guard: only admins may see the wrapped element; everyone else is
+// bounced to the home page ("fully hidden" admin section).
+function RequireAdmin({ isAdmin, children }) {
+  if (!isAdmin) return <Navigate to="/" replace />;
+  return children;
+}
+
 export default function App() {
-  const [auth, setAuth] = useState(() => {
-    const wallet = localStorage.getItem("wallet_address");
-    return wallet ? { wallet, role: "user" } : null;
-  });
+  const [auth, setAuth] = useState(readAuth);
   const [authError, setAuthError] = useState("");
 
   useEffect(() => {
-    const handler = () => {
-      const wallet = localStorage.getItem("wallet_address");
-      setAuth(wallet ? { wallet, role: "user" } : null);
-    };
+    const handler = () => setAuth(readAuth());
     window.addEventListener("storage", handler);
     return () => window.removeEventListener("storage", handler);
   }, []);
@@ -30,8 +73,8 @@ export default function App() {
   const handleConnect = async () => {
     setAuthError("");
     try {
-      const result = await signInWithWallet();
-      setAuth({ wallet: result.wallet, role: result.role });
+      await signInWithWallet();
+      setAuth(readAuth());
     } catch (error) {
       const message = error?.message || "Unable to connect wallet";
       setAuthError(message);
@@ -40,6 +83,7 @@ export default function App() {
 
   const handleSignOut = () => {
     signOut();
+    localStorage.removeItem("admin_session");
     setAuth(null);
   };
 
@@ -98,14 +142,16 @@ export default function App() {
               >
                 KYC Status
               </NavLink>
-              <NavLink
-                to="/admin"
-                className={({ isActive }) =>
-                  `app-nav-link ${isActive ? "app-nav-link-active" : ""}`
-                }
-              >
-                Admin
-              </NavLink>
+              {auth?.isAdmin && (
+                <NavLink
+                  to="/admin"
+                  className={({ isActive }) =>
+                    `app-nav-link ${isActive ? "app-nav-link-active" : ""}`
+                  }
+                >
+                  Admin
+                </NavLink>
+              )}
             </nav>
 
             <div className="app-nav-links" style={{ gap: "0.75rem" }}>
@@ -145,8 +191,15 @@ export default function App() {
               <Route path="/" element={<PropertyLanding />} />
               <Route path="/admin-login" element={<AdminLogin />} />
 
-              {/* ✅ Protected Admin Route */}
-              <Route path="/admin" element={<AdminPanel />} />
+              {/* ✅ Protected Admin Route — non-admins are redirected home */}
+              <Route
+                path="/admin"
+                element={
+                  <RequireAdmin isAdmin={auth?.isAdmin}>
+                    <AdminPanel />
+                  </RequireAdmin>
+                }
+              />
             </Routes>
           </div>
         </main>
